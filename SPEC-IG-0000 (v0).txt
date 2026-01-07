@@ -1,0 +1,273 @@
+SPEC-IG-0000 (v0)
+InterroGate — Admission Filter for Recursion and Invariant Safety
+
+Status: Draft (Exploratory)
+Purpose: Provide a composable, non-orchestrating filter that can be inserted at arbitrary points in a LegiVellum topology to prevent runaway recursion and enforce selected invariants.
+
+0. Non-Goals (Hard Boundaries)
+
+InterroGate MUST NOT:
+
+schedule work
+
+route dynamically based on mesh state
+
+select among equivalent executors
+
+infer completion or progress
+
+initiate new work
+
+mutate intent (“fix” payloads beyond normalization)
+
+InterroGate may only:
+
+ALLOW (emit acceptance receipt, forward)
+
+DENY (emit rejection receipt, do not forward)
+
+This is admission control, not orchestration.
+
+1. Placement Model
+
+InterroGate is a composable checkpoint, not a universal gateway.
+
+It MAY be placed:
+
+at external ingress (public API / InterGate surface)
+
+between Worker → Delegate plan requests
+
+between Delegate → AsyncGate work submission
+
+between any two components where recursion, authority, or invariants must be enforced
+
+InterroGate does not require global topology awareness.
+
+2. Policy Domain
+
+InterroGate evaluates requests within a Policy Domain.
+
+A Policy Domain is identified by:
+
+tenant_id (required)
+
+surface_id (required; identifies the channel/boundary)
+
+policy_profile_id (required; points to ruleset)
+
+The domain selects:
+
+which rules to enforce
+
+which forwarding target(s) are permitted
+
+Important: Domains are explicit. InterroGate MUST NOT infer domains.
+
+3. Inputs
+3.1 Request Envelope (minimum required fields)
+
+InterroGate MUST accept a request envelope containing:
+
+tenant_id
+
+surface_id
+
+policy_profile_id
+
+payload_kind (e.g., work_order, plan_request, lease)
+
+payload (opaque, except for required fields below)
+
+3.2 Required Causality Fields (for any request that can spawn/chain)
+
+If the payload can cause follow-on work, it MUST include:
+
+root_task_id
+
+parent_task_id (nullable for root)
+
+caused_by_receipt_id (nullable for root)
+
+spawn_depth (integer, or InterroGate must be able to derive it from history)
+
+capability_id (stable capability identifier)
+
+recursion_budget_remaining (integer; optional in v0 but strongly recommended)
+
+Requests missing required causality MUST be rejected.
+
+4. Rule Set (v0)
+
+A policy_profile_id resolves to a ruleset containing at minimum:
+
+4.1 Hard Limits
+
+max_spawn_depth (required)
+
+max_total_descendants (optional)
+
+max_repeats_per_capability (optional)
+
+max_repeats_in_ancestor_window (optional; e.g., “capability_id may not appear in last N ancestors”)
+
+4.2 Budget (“Recursion Fuel”)
+
+If recursion_budget_remaining is present:
+
+InterroGate MUST reject when <= 0
+
+InterroGate MUST decrement by 1 on ALLOW and forward the decremented value (or include in metadata)
+
+If not present:
+
+InterroGate MAY operate in “depth-only mode” (less safe; allowed for v0)
+
+4.3 Optional Invariant Checks
+
+Policy profiles MAY include additional invariant checks such as:
+
+lease authority constraints (can_spawn, allowed_targets)
+
+capability allowlist/denylist per surface
+
+maximum artifact size declarations (if known at submission time)
+
+5. Data Sources
+
+InterroGate SHOULD use:
+
+MetaGate for policy retrieval (policy profiles, schema versions, allowlists)
+
+MemoryGate for history queries (descendant counts, depth, capability repeats)
+
+InterroGate MUST NOT fetch or require “entire mesh state” as part of its decision.
+
+InterroGate MAY cache policy profiles with a TTL.
+
+6. Decision Algorithm (Deterministic)
+
+Given (tenant_id, surface_id, policy_profile_id, payload):
+
+Validate envelope fields.
+
+Validate required causality fields (if applicable).
+
+Load policy profile.
+
+Query MemoryGate for lineage stats keyed by:
+
+tenant_id
+
+root_task_id
+
+optionally capability_id
+
+Evaluate rules in this order:
+
+missing fields → DENY
+
+budget exhausted → DENY
+
+depth exceeded → DENY
+
+repeats exceeded → DENY
+
+ancestor window violated → DENY
+
+invariant violations → DENY
+
+If all pass → ALLOW
+
+InterroGate MUST be deterministic: identical inputs + identical observed history must produce identical outcomes.
+
+7. Outputs (Receipts)
+
+InterroGate emits exactly one receipt per decision.
+
+7.1 Acceptance Receipt
+
+Fields (minimum):
+
+phase = accepted
+
+tenant_id
+
+surface_id
+
+policy_profile_id
+
+root_task_id, parent_task_id, caused_by_receipt_id
+
+capability_id
+
+observed counters used (depth, repeats, budget_remaining)
+
+policy_version or policy_hash
+
+7.2 Rejection Receipt
+
+Fields (minimum):
+
+phase = rejected (or phase=escalate if you want to treat it as escalation; v0 recommends rejected as clearer)
+
+all fields above (as available)
+
+rejection_reason_code (enumerated)
+
+rejection_detail (short string; no long blobs)
+
+policy_version / policy_hash
+
+8. Forwarding Behavior
+
+On ALLOW, InterroGate MAY forward the payload to one or more configured targets.
+
+Targets are defined per Policy Domain and MUST be static configuration (not dynamic selection).
+
+InterroGate MUST NOT forward on DENY.
+
+InterroGate MUST NOT transform payload semantics beyond:
+
+adding the acceptance receipt id
+
+decrementing recursion budget (if used)
+
+normalization (e.g., canonical IDs)
+
+9. Deployment Profiles (v0)
+Profile A: Shared Service
+
+One InterroGate instance hosts multiple policy domains.
+
+Profile B: Isolated Per Surface
+
+One InterroGate per surface/channel for strict blast-radius isolation.
+
+Both profiles are compliant.
+
+10. Minimal v0 Requirements
+
+An InterroGate v0 implementation MUST:
+
+support Policy Domains (tenant_id + surface_id + policy_profile_id)
+
+enforce max_spawn_depth
+
+emit accept/reject receipts
+
+allow configured forwarding target(s)
+
+It SHOULD:
+
+support recursion budget (“fuel”)
+
+support repeat caps
+
+query MemoryGate for lineage stats
+
+11. Failure Modes (v0, brief)
+
+False negatives (loop slips through): insufficient policy, missing causality fields, or incomplete history query → mitigate with component-local enforcement as backstop.
+
+False positives (rejects valid work): overly strict caps or missing lineage linkage → mitigate with reason codes and policy tuning.
