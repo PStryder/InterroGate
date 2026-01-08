@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     default_max_spawn_depth: int = 10
     default_max_repeats_per_capability: int = 5
 
+    # Authentication
+    api_key: str = ""
+    allow_insecure_dev: bool = False
+
     model_config = {"env_prefix": "INTERROGATE_"}
 
 

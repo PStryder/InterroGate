@@ -7,7 +7,7 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Any, Optional
 
-from fastapi import FastAPI, HTTPException, Header, Request
+from fastapi import FastAPI, HTTPException, Header, Request, Depends
 from pydantic import BaseModel, Field
 
 from .config import get_settings
@@ -21,6 +21,7 @@ from .models import (
     RequestEnvelope,
 )
 from .policy import PolicyManager
+from .auth import verify_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -143,7 +144,7 @@ async def root():
     }
 
 
-@app.post("/v1/evaluate", response_model=EvaluateResponse, tags=["admission"])
+@app.post("/v1/evaluate", response_model=EvaluateResponse, tags=["admission"], dependencies=[Depends(verify_api_key)])
 async def evaluate_admission(
     request: EvaluateRequest,
     x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
@@ -194,7 +195,7 @@ async def evaluate_admission(
     )
 
 
-@app.post("/v1/admit", response_model=EvaluateResponse, tags=["admission"])
+@app.post("/v1/admit", response_model=EvaluateResponse, tags=["admission"], dependencies=[Depends(verify_api_key)])
 async def admit(
     envelope: RequestEnvelope,
     x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
@@ -211,7 +212,7 @@ async def admit(
     )
 
 
-@app.post("/v1/check", tags=["admission"])
+@app.post("/v1/check", tags=["admission"], dependencies=[Depends(verify_api_key)])
 async def check_only(
     envelope: RequestEnvelope,
     x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
@@ -233,7 +234,7 @@ async def check_only(
     }
 
 
-@app.post("/v1/cache/clear", response_model=PolicyCacheResponse, tags=["admin"])
+@app.post("/v1/cache/clear", response_model=PolicyCacheResponse, tags=["admin"], dependencies=[Depends(verify_api_key)])
 async def clear_cache():
     """Clear the policy cache."""
     if state.policy_manager:
@@ -241,7 +242,7 @@ async def clear_cache():
     return PolicyCacheResponse(cleared=True)
 
 
-@app.post("/v1/cache/invalidate/{policy_profile_id}", response_model=PolicyCacheResponse, tags=["admin"])
+@app.post("/v1/cache/invalidate/{policy_profile_id}", response_model=PolicyCacheResponse, tags=["admin"], dependencies=[Depends(verify_api_key)])
 async def invalidate_policy(policy_profile_id: str):
     """Invalidate a specific policy in the cache."""
     if state.policy_manager:
