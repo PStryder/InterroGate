@@ -8,12 +8,14 @@ from contextlib import asynccontextmanager
 from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException, Header, Request, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from .config import get_settings
 from .evaluator import AdmissionEvaluator
 from .forwarder import RequestForwarder
 from .lineage import LineageClient
+from .middleware import get_rate_limiter
 from .models import (
     AdmissionReceipt,
     Decision,
@@ -88,6 +90,27 @@ This is admission control, not orchestration.
     lifespan=lifespan,
 )
 
+# CORS middleware
+settings = get_settings()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_allowed_origins,
+    allow_credentials=settings.cors_allow_credentials,
+    allow_methods=settings.cors_allowed_methods,
+    allow_headers=settings.cors_allowed_headers,
+)
+
+
+# Rate limiting dependency
+async def rate_limit_dependency(request: Request) -> None:
+    """Rate limiting dependency."""
+    settings = get_settings()
+    limiter = get_rate_limiter(
+        calls_per_minute=settings.rate_limit_requests_per_minute,
+        enabled=settings.rate_limit_enabled
+    )
+    await limiter.check_request(request)
+
 
 # API Models
 class HealthResponse(BaseModel):
@@ -128,6 +151,8 @@ async def health_check():
     settings = get_settings()
     return HealthResponse(
         status="healthy",
+        service="InterroGate",
+        version="0.1.0",
         instance_id=settings.instance_id,
     )
 
@@ -144,7 +169,7 @@ async def root():
     }
 
 
-@app.post("/v1/evaluate", response_model=EvaluateResponse, tags=["admission"], dependencies=[Depends(verify_api_key)])
+@app.post("/v1/evaluate", response_model=EvaluateResponse, tags=["admission"], dependencies=[Depends(verify_api_key), Depends(rate_limit_dependency)])
 async def evaluate_admission(
     request: EvaluateRequest,
     x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
