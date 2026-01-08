@@ -39,6 +39,18 @@ class Settings(BaseSettings):
     # Forwarding
     forward_timeout_seconds: float = Field(default=30.0, description="Forward request timeout")
     forward_retries: int = Field(default=2, description="Forward retry attempts")
+    forward_allowed_hosts: list[str] = Field(
+        default=["localhost", "127.0.0.1"],
+        description="Allowed forward target hosts (use '*' to allow any)"
+    )
+    forward_allowed_schemes: list[str] = Field(
+        default=["http", "https"],
+        description="Allowed schemes for forward targets"
+    )
+    forward_pass_headers: list[str] = Field(
+        default=["X-Tenant-ID", "X-Request-ID"],
+        description="Headers allowed to pass through to forward targets"
+    )
 
     # Default policy (fallback if MetaGate unavailable)
     default_max_spawn_depth: int = Field(default=10, description="Default max spawn depth")

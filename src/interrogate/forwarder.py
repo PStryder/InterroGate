@@ -52,6 +52,34 @@ class RequestForwarder:
             await self._http_client.aclose()
             self._http_client = None
 
+    def _is_target_allowed(self, target: str) -> bool:
+        """Validate target against allowlist."""
+        try:
+            url = httpx.URL(target)
+        except Exception:
+            return False
+
+        if url.scheme not in self._settings.forward_allowed_schemes:
+            return False
+
+        host = (url.host or "").lower()
+        if not host:
+            return False
+
+        allowed_hosts = [h.lower() for h in self._settings.forward_allowed_hosts]
+        if not allowed_hosts:
+            return False
+
+        for allowed in allowed_hosts:
+            if allowed == "*":
+                return True
+            if allowed.startswith("*.") and host.endswith(allowed[1:]):
+                return True
+            if host == allowed:
+                return True
+
+        return False
+
     async def forward(
         self,
         result: EvaluationResult,
@@ -127,6 +155,8 @@ class RequestForwarder:
             ForwardError: If forwarding fails after retries
         """
         client = await self._get_client()
+        if not self._is_target_allowed(target):
+            raise ForwardError("Target not in allowlist", target=target, status_code=403)
 
         # Build headers
         headers = {
@@ -136,9 +166,11 @@ class RequestForwarder:
 
         # Pass through selected original headers
         if original_headers:
-            for key in ("X-Tenant-ID", "Authorization", "X-Request-ID"):
-                if key in original_headers:
-                    headers[key] = original_headers[key]
+            normalized_headers = {k.lower(): v for k, v in original_headers.items()}
+            for key in self._settings.forward_pass_headers:
+                value = normalized_headers.get(key.lower())
+                if value is not None:
+                    headers[key] = value
 
         last_error: Optional[Exception] = None
         for attempt in range(self._settings.forward_retries + 1):
