@@ -25,8 +25,14 @@ class Settings(BaseSettings):
     instance_id: str = Field(default="interrogate-1", description="Instance identifier")
 
     # External services
-    metagate_url: Optional[str] = Field(default=None, description="MetaGate URL")
-    memorygate_url: Optional[str] = Field(default=None, description="MemoryGate URL")
+    metagate_url: Optional[str] = Field(default=None, description="MetaGate MCP endpoint")
+    metagate_api_key: Optional[str] = Field(default=None, description="MetaGate API key")
+    receiptgate_url: Optional[str] = Field(default=None, description="ReceiptGate MCP endpoint")
+    receiptgate_api_key: Optional[str] = Field(default=None, description="ReceiptGate API key")
+    memorygate_url: Optional[str] = Field(
+        default=None,
+        description="Deprecated: legacy MemoryGate URL (use receiptgate_url)",
+    )
 
     # Policy cache
     policy_cache_ttl_seconds: int = Field(default=300, description="Policy cache TTL in seconds")
@@ -84,7 +90,7 @@ class Settings(BaseSettings):
             raise ValueError(f"Port must be between 1 and 65535, got {v}")
         return v
 
-    @field_validator("metagate_url", "memorygate_url")
+    @field_validator("metagate_url", "receiptgate_url", "memorygate_url")
     @classmethod
     def validate_integration_url(cls, v: Optional[str]) -> Optional[str]:
         """Validate integration URLs are HTTP(S)."""

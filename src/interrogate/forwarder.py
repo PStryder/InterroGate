@@ -54,8 +54,9 @@ class RequestForwarder:
 
     def _is_target_allowed(self, target: str) -> bool:
         """Validate target against allowlist."""
+        endpoint = self._normalize_mcp_endpoint(target)
         try:
-            url = httpx.URL(target)
+            url = httpx.URL(endpoint)
         except Exception:
             return False
 
@@ -79,6 +80,42 @@ class RequestForwarder:
                 return True
 
         return False
+
+    def _normalize_mcp_endpoint(self, target: str) -> str:
+        endpoint, _tool = self._split_target(target)
+        normalized = endpoint.rstrip("/")
+        if not normalized.endswith("/mcp"):
+            normalized = f"{normalized}/mcp"
+        return normalized
+
+    @staticmethod
+    def _split_target(target: str) -> tuple[str, Optional[str]]:
+        if "::" in target:
+            endpoint, tool_name = target.split("::", 1)
+            return endpoint, tool_name or None
+        if "#" in target:
+            endpoint, tool_name = target.split("#", 1)
+            return endpoint, tool_name or None
+        return target, None
+
+    @staticmethod
+    def _resolve_tool_call(payload: dict[str, Any], tool_hint: Optional[str]) -> tuple[str, dict[str, Any]]:
+        tool_name = tool_hint or payload.get("tool") or payload.get("name")
+        if not tool_name:
+            raise ValueError("Missing tool name for MCP forward")
+
+        if isinstance(payload.get("arguments"), dict):
+            arguments = dict(payload.get("arguments") or {})
+        elif isinstance(payload.get("args"), dict):
+            arguments = dict(payload.get("args") or {})
+        else:
+            arguments = {k: v for k, v in payload.items() if k not in ("tool", "name")}
+
+        admission_receipt_id = payload.get("admission_receipt_id")
+        if admission_receipt_id and "admission_receipt_id" not in arguments:
+            arguments["admission_receipt_id"] = admission_receipt_id
+
+        return tool_name, arguments
 
     async def forward(
         self,
@@ -158,6 +195,13 @@ class RequestForwarder:
         if not self._is_target_allowed(target):
             raise ForwardError("Target not in allowlist", target=target, status_code=403)
 
+        endpoint, tool_hint = self._split_target(target)
+        mcp_endpoint = self._normalize_mcp_endpoint(endpoint)
+        try:
+            tool_name, arguments = self._resolve_tool_call(payload, tool_hint)
+        except ValueError as exc:
+            raise ForwardError(str(exc), target=target, status_code=400)
+
         # Build headers
         headers = {
             "Content-Type": "application/json",
@@ -176,29 +220,40 @@ class RequestForwarder:
         for attempt in range(self._settings.forward_retries + 1):
             try:
                 response = await client.post(
-                    target,
-                    json=payload,
+                    mcp_endpoint,
+                    json={
+                        "jsonrpc": "2.0",
+                        "id": f"forward-{attempt}",
+                        "method": "tools/call",
+                        "params": {"name": tool_name, "arguments": arguments},
+                    },
                     headers=headers,
                 )
 
-                if response.status_code >= 200 and response.status_code < 300:
-                    return response.json() if response.content else {}
-
-                # Non-retryable error
-                if response.status_code >= 400 and response.status_code < 500:
+                response.raise_for_status()
+                data = response.json()
+                if data.get("error"):
                     raise ForwardError(
-                        f"Target rejected request: {response.status_code}",
+                        f"MCP error: {data['error']}",
                         target=target,
-                        status_code=response.status_code,
+                        status_code=500,
                     )
+                return data.get("result", {})
 
-                # Server error - retry
+            except httpx.HTTPStatusError as e:
+                status_code = e.response.status_code if e.response else None
+                if status_code and 400 <= status_code < 500:
+                    raise ForwardError(
+                        f"Target rejected request: {status_code}",
+                        target=target,
+                        status_code=status_code,
+                    )
                 last_error = ForwardError(
-                    f"Target server error: {response.status_code}",
+                    f"Target server error: {status_code}",
                     target=target,
-                    status_code=response.status_code,
+                    status_code=status_code,
                 )
-                logger.warning(f"Retry {attempt + 1} for {target}: {response.status_code}")
+                logger.warning(f"Retry {attempt + 1} for {target}: {status_code}")
 
             except httpx.RequestError as e:
                 last_error = ForwardError(

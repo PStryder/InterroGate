@@ -66,9 +66,7 @@ class PolicyManager:
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client."""
         if self._http_client is None:
-            self._http_client = httpx.AsyncClient(
-                timeout=httpx.Timeout(10.0)
-            )
+            self._http_client = httpx.AsyncClient(timeout=httpx.Timeout(10.0))
         return self._http_client
 
     async def close(self) -> None:
@@ -121,32 +119,69 @@ class PolicyManager:
         surface_id: str,
         policy_profile_id: str,
     ) -> Optional[PolicyProfile]:
-        """Fetch policy from MetaGate."""
-        if not self._settings.metagate_url:
+        """Fetch policy from MetaGate via MCP."""
+        endpoint = self._settings.metagate_url
+        if not endpoint:
             return None
 
         try:
             client = await self._get_client()
-            url = f"{self._settings.metagate_url}/v1/admin/profiles/{policy_profile_id}"
-            response = await client.get(
-                url,
-                params={"tenant_id": tenant_id, "surface_id": surface_id},
-                headers={"X-Tenant-ID": tenant_id},
-            )
+            normalized = self._normalize_mcp_endpoint(endpoint)
+            headers = {}
+            if self._settings.metagate_api_key:
+                headers["Authorization"] = f"Bearer {self._settings.metagate_api_key}"
 
-            if response.status_code == 200:
-                data = response.json()
-                return PolicyProfile(**data)
-            elif response.status_code == 404:
-                logger.warning(f"Policy not found in MetaGate: {policy_profile_id}")
+            payload = {
+                "jsonrpc": "2.0",
+                "id": "policy-fetch",
+                "method": "tools/call",
+                "params": {
+                    "name": "metagate.admin_profiles",
+                    "arguments": {
+                        "action": "get",
+                        "profile_id": policy_profile_id,
+                        "profile_key": policy_profile_id,
+                        "tenant_key": tenant_id,
+                    },
+                },
+            }
+            response = await client.post(normalized, json=payload, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+            if data.get("error"):
+                if data["error"].get("code") == "not_found":
+                    logger.warning(f"Policy not found in MetaGate: {policy_profile_id}")
+                    return None
+                logger.error(f"MetaGate error: {data['error']}")
                 return None
-            else:
-                logger.error(f"MetaGate error: {response.status_code}")
-                return None
+
+            result = data.get("result") or {}
+            policy_payload = result.get("policy") or {}
+            profile_key = result.get("profile_key") or policy_profile_id
+
+            if "policy_profile_id" not in policy_payload:
+                policy_payload["policy_profile_id"] = profile_key
+            if "policy_version" not in policy_payload:
+                policy_payload["policy_version"] = policy_payload.get("version", "1.0")
+            if "cache_ttl_seconds" not in policy_payload:
+                policy_payload["cache_ttl_seconds"] = self._settings.policy_cache_ttl_seconds
+            if "max_spawn_depth" not in policy_payload:
+                policy_payload["max_spawn_depth"] = self._settings.default_max_spawn_depth
+            if "max_repeats_per_capability" not in policy_payload:
+                policy_payload["max_repeats_per_capability"] = self._settings.default_max_repeats_per_capability
+
+            return PolicyProfile(**policy_payload)
 
         except httpx.RequestError as e:
             logger.error(f"MetaGate request failed: {e}")
             return None
+
+    @staticmethod
+    def _normalize_mcp_endpoint(endpoint: str) -> str:
+        normalized = endpoint.rstrip("/")
+        if not normalized.endswith("/mcp"):
+            normalized = f"{normalized}/mcp"
+        return normalized
 
     def _get_default_policy(self, policy_profile_id: str) -> PolicyProfile:
         """Return default fallback policy."""

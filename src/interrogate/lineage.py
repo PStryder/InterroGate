@@ -1,6 +1,6 @@
-"""Lineage statistics from MemoryGate.
+"""Lineage statistics from ReceiptGate.
 
-Handles querying MemoryGate for lineage information needed for admission decisions.
+Handles querying ReceiptGate for lineage information needed for admission decisions.
 """
 
 import logging
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class LineageClient:
-    """Client for querying lineage statistics from MemoryGate."""
+    """Client for querying lineage statistics from ReceiptGate."""
 
     def __init__(self, http_client: Optional[httpx.AsyncClient] = None):
         self._settings = get_settings()
@@ -25,9 +25,7 @@ class LineageClient:
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client."""
         if self._http_client is None:
-            self._http_client = httpx.AsyncClient(
-                timeout=httpx.Timeout(10.0)
-            )
+            self._http_client = httpx.AsyncClient(timeout=httpx.Timeout(10.0))
         return self._http_client
 
     async def close(self) -> None:
@@ -42,84 +40,65 @@ class LineageClient:
         root_task_id: str,
         capability_id: Optional[str] = None,
     ) -> LineageStats:
-        """Query MemoryGate for lineage statistics.
-
-        Args:
-            tenant_id: Tenant identifier
-            root_task_id: Root task identifier
-            capability_id: Optional capability to count repeats for
-
-        Returns:
-            LineageStats with counts and depths
-        """
-        if not self._settings.memorygate_url:
-            logger.warning("MemoryGate URL not configured, returning empty stats")
-            return LineageStats(
-                tenant_id=tenant_id,
-                root_task_id=root_task_id,
-            )
+        """Query ReceiptGate for lineage statistics."""
+        endpoint = self._settings.receiptgate_url or self._settings.memorygate_url
+        if not endpoint:
+            logger.warning("ReceiptGate endpoint not configured, returning empty stats")
+            return LineageStats(tenant_id=tenant_id, root_task_id=root_task_id)
 
         try:
             client = await self._get_client()
+            normalized = self._normalize_mcp_endpoint(endpoint)
+            headers = {}
+            if self._settings.receiptgate_api_key:
+                headers["Authorization"] = f"Bearer {self._settings.receiptgate_api_key}"
 
-            # Query receipt chain for this root_task_id
-            url = f"{self._settings.memorygate_url}/v1/receipts/chain/{root_task_id}"
-            response = await client.get(
-                url,
-                params={"tenant_id": tenant_id},
-                headers={"X-Tenant-ID": tenant_id},
+            payload = {
+                "jsonrpc": "2.0",
+                "id": "lineage",
+                "method": "tools/call",
+                "params": {
+                    "name": "receiptgate.list_task_receipts",
+                    "arguments": {
+                        "task_id": root_task_id,
+                        "sort": "asc",
+                        "include_payload": True,
+                    },
+                },
+            }
+            response = await client.post(normalized, json=payload, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+            if data.get("error"):
+                logger.error(f"ReceiptGate error: {data['error']}")
+                return LineageStats(tenant_id=tenant_id, root_task_id=root_task_id)
+
+            receipts = (data.get("result") or {}).get("receipts", [])
+            return self._parse_lineage_from_receipts(
+                tenant_id, root_task_id, capability_id, receipts
             )
-
-            if response.status_code == 200:
-                data = response.json()
-                return self._parse_lineage_stats(
-                    tenant_id, root_task_id, capability_id, data
-                )
-            elif response.status_code == 404:
-                # No chain exists yet (root task)
-                return LineageStats(
-                    tenant_id=tenant_id,
-                    root_task_id=root_task_id,
-                )
-            else:
-                logger.error(f"MemoryGate error: {response.status_code}")
-                return LineageStats(
-                    tenant_id=tenant_id,
-                    root_task_id=root_task_id,
-                )
 
         except httpx.RequestError as e:
-            logger.error(f"MemoryGate request failed: {e}")
-            return LineageStats(
-                tenant_id=tenant_id,
-                root_task_id=root_task_id,
-            )
+            logger.error(f"ReceiptGate request failed: {e}")
+            return LineageStats(tenant_id=tenant_id, root_task_id=root_task_id)
 
-    def _parse_lineage_stats(
+    def _parse_lineage_from_receipts(
         self,
         tenant_id: str,
         root_task_id: str,
         capability_id: Optional[str],
-        data: dict,
+        receipts: list[dict],
     ) -> LineageStats:
-        """Parse lineage stats from MemoryGate response."""
-        chain = data.get("chain", [])
-
-        # Calculate depth as length of chain
-        current_depth = len(chain)
-
-        # Count total descendants (all receipts in chain minus root)
+        """Parse lineage stats from receipt payloads."""
+        current_depth = len(receipts)
         total_descendants = max(0, current_depth - 1)
 
-        # Extract capability IDs from ancestor chain
-        ancestor_capability_ids = []
+        ancestor_capability_ids: list[str] = []
         capability_repeat_count = 0
 
-        for receipt in chain:
-            # Look for capability_id in receipt metadata or dedicated field
-            cap_id = receipt.get("capability_id") or receipt.get(
-                "metadata", {}
-            ).get("capability_id")
+        for receipt in receipts:
+            payload = receipt.get("payload") or {}
+            cap_id = payload.get("capability_id") or payload.get("metadata", {}).get("capability_id")
             if cap_id:
                 ancestor_capability_ids.append(cap_id)
                 if capability_id and cap_id == capability_id:
@@ -133,3 +112,10 @@ class LineageClient:
             capability_repeat_count=capability_repeat_count,
             ancestor_capability_ids=ancestor_capability_ids,
         )
+
+    @staticmethod
+    def _normalize_mcp_endpoint(endpoint: str) -> str:
+        normalized = endpoint.rstrip("/")
+        if not normalized.endswith("/mcp"):
+            normalized = f"{normalized}/mcp"
+        return normalized

@@ -19,7 +19,7 @@ def main():
         logging.getLogger().setLevel(logging.DEBUG)
 
     uvicorn.run(
-        "interrogate.api:app",
+        "interrogate.mcp:app",
         host=settings.host,
         port=settings.port,
         reload=settings.debug,
