@@ -1,3 +1,5 @@
+> LEGACY NOTE (2026-02-03): InterroGate is MCP-only. REST endpoint references are historical.
+
 # InterroGate Code Review
 
 **Review Date:** 2026-01-08

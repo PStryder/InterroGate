@@ -38,20 +38,19 @@ Environment variables (prefix `INTERROGATE_`):
 | `FORWARD_TIMEOUT_SECONDS` | 30.0 | Forwarding timeout |
 | `DEFAULT_MAX_SPAWN_DEPTH` | 10 | Default max spawn depth |
 
-## API Endpoints
+## MCP Interface
 
-### Health
-- `GET /health` - Health check
-- `GET /` - Service info
+InterroGate exposes MCP over HTTP at `/mcp` with JSON-RPC methods:
+- `tools/list`
+- `tools/call`
 
-### Admission
-- `POST /v1/evaluate` - Evaluate admission with full control
-- `POST /v1/admit` - Evaluate and forward (shorthand)
-- `POST /v1/check` - Check admission without forwarding (dry-run)
-
-### Admin
-- `POST /v1/cache/clear` - Clear policy cache
-- `POST /v1/cache/invalidate/{id}` - Invalidate specific policy
+**Core tools:**
+- `interrogate.health`
+- `interrogate.evaluate`
+- `interrogate.admit`
+- `interrogate.check`
+- `interrogate.cache_clear`
+- `interrogate.cache_invalidate`
 
 ## Request Envelope
 
@@ -133,7 +132,7 @@ InterroGate emits exactly one receipt per decision:
 
 ```bash
 # Start server
-uvicorn interrogate.api:app --host 0.0.0.0 --port 8000
+uvicorn interrogate.mcp:app --host 0.0.0.0 --port 8000
 
 # Or use the entry point
 python -m interrogate.main

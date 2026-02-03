@@ -1,6 +1,6 @@
-"""InterroGate REST API.
+"""InterroGate REST API (LEGACY, not mounted).
 
-Implements the HTTP interface for admission control.
+Implements the HTTP interface for admission control. MCP-only deployments should use /mcp tools.
 """
 
 import logging
