@@ -1,7 +1,7 @@
 """
-Authentication for InterroGate REST API.
+Authentication for InterroGate MCP HTTP requests.
 
-Simple API key authentication for protecting admin endpoints.
+Simple API key authentication for protecting MCP endpoints.
 """
 
 import logging
