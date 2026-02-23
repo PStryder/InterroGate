@@ -10,6 +10,7 @@ import httpx
 
 from .config import get_settings
 from .models import EvaluationResult
+from .telemetry import telemetry
 
 logger = logging.getLogger(__name__)
 
@@ -253,12 +254,22 @@ class RequestForwarder:
                     target=target,
                     status_code=status_code,
                 )
+                telemetry.record_forward_retry(
+                    target=target,
+                    attempt=attempt + 1,
+                    reason=f"http_{status_code}",
+                )
                 logger.warning(f"Retry {attempt + 1} for {target}: {status_code}")
 
             except httpx.RequestError as e:
                 last_error = ForwardError(
                     f"Network error: {e}",
                     target=target,
+                )
+                telemetry.record_forward_retry(
+                    target=target,
+                    attempt=attempt + 1,
+                    reason="network_error",
                 )
                 logger.warning(f"Retry {attempt + 1} for {target}: {e}")
 

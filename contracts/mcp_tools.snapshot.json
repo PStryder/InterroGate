@@ -1,0 +1,101 @@
+{
+  "service": "InterroGate",
+  "snapshot_type": "tools/list",
+  "tools": [
+    {
+      "name": "interrogate.health",
+      "description": "Health check / service info",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "interrogate.evaluate",
+      "description": "Evaluate admission with optional forwarding",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "envelope": {
+            "type": "object"
+          },
+          "forward": {
+            "type": "boolean"
+          },
+          "auth_token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "envelope"
+        ]
+      }
+    },
+    {
+      "name": "interrogate.admit",
+      "description": "Evaluate and forward (shorthand)",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "envelope": {
+            "type": "object"
+          },
+          "auth_token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "envelope"
+        ]
+      }
+    },
+    {
+      "name": "interrogate.check",
+      "description": "Evaluate without forwarding (dry-run)",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "envelope": {
+            "type": "object"
+          },
+          "auth_token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "envelope"
+        ]
+      }
+    },
+    {
+      "name": "interrogate.cache_clear",
+      "description": "Clear policy cache",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "auth_token": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "name": "interrogate.cache_invalidate",
+      "description": "Invalidate a cached policy profile",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "policy_profile_id": {
+            "type": "string"
+          },
+          "auth_token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "policy_profile_id"
+        ]
+      }
+    }
+  ]
+}

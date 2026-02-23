@@ -17,6 +17,7 @@ from .lineage import LineageClient
 from .middleware import get_rate_limiter
 from .models import Decision, RequestEnvelope
 from .policy import PolicyManager
+from .telemetry import telemetry
 
 logger = logging.getLogger(__name__)
 
@@ -177,6 +178,8 @@ async def _handle_tool(name: str, arguments: dict[str, Any], request: Request) -
         forward = bool(arguments.get("forward", name != "interrogate.check"))
 
         result = await state.evaluator.evaluate(envelope)
+        if result.decision == Decision.DENY and result.receipt.rejection_reason_code:
+            telemetry.record_deny_reason(result.receipt.rejection_reason_code.value)
 
         forwarded = False
         forward_results: list[dict[str, Any]] = []
@@ -223,25 +226,30 @@ async def _handle_tool(name: str, arguments: dict[str, Any], request: Request) -
 
 @router.post("")
 async def mcp_entry(request_body: MCPRequest, request: Request) -> dict[str, Any]:
+    telemetry.record_request(request_body.method)
     await _rate_limit(request)
 
     if request_body.method == "tools/list":
         return _jsonrpc_result(request_body.id, {"tools": MCP_TOOLS})
 
     if request_body.method != "tools/call":
+        telemetry.record_error_code("-32601")
         return _jsonrpc_error(request_body.id, -32601, f"Method not found: {request_body.method}")
 
     params = request_body.params or {}
     tool_name = params.get("name")
     arguments = params.get("arguments") or {}
     if not tool_name:
+        telemetry.record_error_code("-32602")
         return _jsonrpc_error(request_body.id, -32602, "Missing tool name")
 
     try:
         result = await _handle_tool(tool_name, arguments, request)
         return _jsonrpc_result(request_body.id, result)
     except Exception as exc:
-        return _jsonrpc_error(request_body.id, getattr(exc, "code", "ERROR"), str(exc))
+        error_code = str(getattr(exc, "code", "ERROR"))
+        telemetry.record_error_code(error_code)
+        return _jsonrpc_error(request_body.id, error_code, str(exc))
 
 
 app = FastAPI(title="InterroGate", version="0.1.0", lifespan=lifespan)
