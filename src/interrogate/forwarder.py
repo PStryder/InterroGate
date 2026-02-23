@@ -9,7 +9,7 @@ from typing import Any, Optional
 import httpx
 
 from .config import get_settings
-from .models import EvaluationResult, ForwardRequest
+from .models import EvaluationResult
 
 logger = logging.getLogger(__name__)
 
@@ -200,7 +200,7 @@ class RequestForwarder:
         try:
             tool_name, arguments = self._resolve_tool_call(payload, tool_hint)
         except ValueError as exc:
-            raise ForwardError(str(exc), target=target, status_code=400)
+            raise ForwardError(str(exc), target=target, status_code=400) from exc
 
         # Build headers
         headers = {
@@ -216,7 +216,7 @@ class RequestForwarder:
                 if value is not None:
                     headers[key] = value
 
-        last_error: Optional[Exception] = None
+        last_error: Optional[ForwardError] = None
         for attempt in range(self._settings.forward_retries + 1):
             try:
                 response = await client.post(
@@ -247,7 +247,7 @@ class RequestForwarder:
                         f"Target rejected request: {status_code}",
                         target=target,
                         status_code=status_code,
-                    )
+                    ) from e
                 last_error = ForwardError(
                     f"Target server error: {status_code}",
                     target=target,

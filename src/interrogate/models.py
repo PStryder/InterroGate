@@ -6,8 +6,9 @@ Based on SPEC-IG-0000 (v0).
 from datetime import datetime
 from enum import Enum
 from typing import Any, Optional
-from pydantic import BaseModel, Field
+
 import ulid
+from pydantic import BaseModel, Field
 
 
 class PayloadKind(str, Enum):

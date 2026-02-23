@@ -1,6 +1,7 @@
 """InterroGate entry point."""
 
 import logging
+
 import uvicorn
 
 from .config import get_settings

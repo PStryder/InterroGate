@@ -275,6 +275,8 @@ class AdmissionEvaluator:
             caused_by_receipt_id=envelope.causality.caused_by_receipt_id if envelope.causality else None,
             capability_id=envelope.causality.capability_id if envelope.causality else None,
             observed_counters=observed,
+            rejection_reason_code=None,
+            rejection_detail=None,
         )
 
         # Prepare forwarded payload

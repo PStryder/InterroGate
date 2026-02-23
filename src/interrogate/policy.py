@@ -188,9 +188,19 @@ class PolicyManager:
         return PolicyProfile(
             policy_profile_id=policy_profile_id,
             policy_version="default",
+            policy_hash=None,
             max_spawn_depth=self._settings.default_max_spawn_depth,
+            max_total_descendants=None,
             max_repeats_per_capability=self._settings.default_max_repeats_per_capability,
+            max_repeats_in_ancestor_window=None,
+            ancestor_window_size=None,
+            capability_allowlist=None,
+            capability_denylist=None,
+            allowed_targets=None,
+            can_spawn=True,
+            max_artifact_size_bytes=None,
             forward_targets=[],
+            cache_ttl_seconds=self._settings.policy_cache_ttl_seconds,
         )
 
     def invalidate(self, policy_profile_id: str) -> None:

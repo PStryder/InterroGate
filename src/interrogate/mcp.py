@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
-from typing import Any, Optional
+from typing import Any, AsyncIterator, Optional
 
 from fastapi import APIRouter, FastAPI, Request
 from pydantic import BaseModel, Field
@@ -32,9 +32,10 @@ state = AppState()
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    del app
     settings = get_settings()
-    logger.info("interrogate_starting", instance_id=settings.instance_id)
+    logger.info("interrogate_starting instance_id=%s", settings.instance_id)
 
     state.policy_manager = PolicyManager()
     state.lineage_client = LineageClient()
@@ -52,7 +53,7 @@ async def lifespan(app: FastAPI):
         await state.lineage_client.close()
     if state.forwarder:
         await state.forwarder.close()
-    logger.info("interrogate_shutdown", instance_id=settings.instance_id)
+    logger.info("interrogate_shutdown instance_id=%s", settings.instance_id)
 
 
 class MCPRequest(BaseModel):
@@ -180,13 +181,17 @@ async def _handle_tool(name: str, arguments: dict[str, Any], request: Request) -
         forwarded = False
         forward_results: list[dict[str, Any]] = []
         if result.decision == Decision.ALLOW and forward and state.forwarder:
-            original_headers = {
-                "Authorization": request.headers.get("authorization"),
-                "X-Tenant-ID": request.headers.get("x-tenant-id"),
-                "X-Request-ID": request.headers.get("x-request-id"),
-                "X-API-Key": request.headers.get("x-api-key"),
+            original_headers: dict[str, str] = {}
+            pass_through_headers = {
+                "Authorization": "authorization",
+                "X-Tenant-ID": "x-tenant-id",
+                "X-Request-ID": "x-request-id",
+                "X-API-Key": "x-api-key",
             }
-            original_headers = {k: v for k, v in original_headers.items() if v}
+            for outbound_name, inbound_name in pass_through_headers.items():
+                value = request.headers.get(inbound_name)
+                if value:
+                    original_headers[outbound_name] = value
             forward_results = await state.forwarder.forward(result, original_headers)
             forwarded = any(r.get("success") for r in forward_results)
 
@@ -217,7 +222,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any], request: Request) -
 
 
 @router.post("")
-async def mcp_entry(request_body: MCPRequest, request: Request):
+async def mcp_entry(request_body: MCPRequest, request: Request) -> dict[str, Any]:
     await _rate_limit(request)
 
     if request_body.method == "tools/list":
