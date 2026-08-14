@@ -18,6 +18,7 @@ from .middleware import get_rate_limiter
 from .models import Decision, RequestEnvelope
 from .policy import PolicyManager
 from .telemetry import telemetry
+from .metagate_client import acknowledge_startup, bootstrap_from_metagate
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     del app
     settings = get_settings()
     logger.info("interrogate_starting instance_id=%s", settings.instance_id)
+
+    # Resolve peer endpoints from MetaGate before anything that uses them.
+    # Best-effort by design: a failure must never prevent startup, or the
+    # bootstrap authority becomes a hidden master.
+    _bootstrap = await bootstrap_from_metagate(settings)
+    if _bootstrap is not None and _bootstrap.succeeded:
+        await acknowledge_startup(settings, _bootstrap)
 
     state.policy_manager = PolicyManager()
     state.lineage_client = LineageClient()
