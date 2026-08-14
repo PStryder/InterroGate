@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Optional
 
-from pydantic import Field, ValidationInfo, field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -88,7 +88,6 @@ class Settings(BaseSettings):
     # non-blocking authority, so an unset endpoint means "use the values
     # configured here" rather than a misconfiguration.
     metagate_endpoint: Optional[str] = Field(default=None, description="MetaGate MCP endpoint for bootstrap")
-    metagate_api_key: Optional[str] = Field(default=None, description="API key for MetaGate bootstrap")
     metagate_component_key: str = Field(default="interrogate", description="Component key presented at bootstrap")
     metagate_bootstrap_timeout_seconds: float = Field(default=5.0, description="Bootstrap request timeout")
 

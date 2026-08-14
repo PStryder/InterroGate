@@ -155,7 +155,7 @@ def build_admission_receipts(
     accepted_id = str(uuid4())
     complete_id = str(uuid4())
     tenant_id = envelope.tenant_id or "default"
-    evaluated_at = _iso(admission.evaluated_at) or _iso(datetime.now(timezone.utc))
+    evaluated_at = _iso(admission.evaluated_at) or datetime.now(timezone.utc).isoformat()
 
     causality = envelope.causality
     # The request that prompted the evaluation, if the caller supplied
@@ -245,7 +245,10 @@ class ReceiptGateEmitter:
         return bool(self._endpoint)
 
     async def _submit(self, client: httpx.AsyncClient, receipt: dict[str, Any]) -> None:
-        url = self._endpoint if self._endpoint.endswith("/mcp") else f"{self._endpoint.rstrip('/')}/mcp"
+        endpoint = self._endpoint
+        if not endpoint:
+            raise RuntimeError("ReceiptGate endpoint is not configured")
+        url = endpoint if endpoint.endswith("/mcp") else f"{endpoint.rstrip('/')}/mcp"
         headers = {"Content-Type": "application/json"}
         if self._api_key:
             headers["X-API-Key"] = self._api_key

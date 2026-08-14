@@ -12,7 +12,9 @@ what make the ledger answer "who owes what?" instead of "what happened?".
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 
@@ -228,8 +230,6 @@ def test_envelope_without_causality_still_receipts() -> None:
 # LegiVellum checkout, as AsyncGate's contract tests do; skipped rather than
 # silently passing when it is not present.
 
-import os
-from pathlib import Path
 
 
 def _canonical_schema():

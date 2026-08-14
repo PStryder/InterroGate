@@ -15,11 +15,11 @@ from .evaluator import AdmissionEvaluator
 from .forwarder import RequestForwarder
 from .legivellum_receipts import ReceiptGateEmitter, emitter_from_settings
 from .lineage import LineageClient
+from .metagate_client import acknowledge_startup, bootstrap_from_metagate
 from .middleware import get_rate_limiter
 from .models import Decision, RequestEnvelope
 from .policy import PolicyManager
 from .telemetry import telemetry
-from .metagate_client import acknowledge_startup, bootstrap_from_metagate
 
 logger = logging.getLogger(__name__)
 
