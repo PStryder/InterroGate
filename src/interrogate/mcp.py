@@ -13,6 +13,7 @@ from .auth import validate_api_key_value
 from .config import get_settings
 from .evaluator import AdmissionEvaluator
 from .forwarder import RequestForwarder
+from .legivellum_receipts import ReceiptGateEmitter, emitter_from_settings
 from .lineage import LineageClient
 from .middleware import get_rate_limiter
 from .models import Decision, RequestEnvelope
@@ -28,6 +29,7 @@ class AppState:
     lineage_client: Optional[LineageClient] = None
     evaluator: Optional[AdmissionEvaluator] = None
     forwarder: Optional[RequestForwarder] = None
+    receipt_emitter: Optional[ReceiptGateEmitter] = None
 
 
 state = AppState()
@@ -53,6 +55,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         lineage_client=state.lineage_client,
     )
     state.forwarder = RequestForwarder()
+    state.receipt_emitter = emitter_from_settings(settings)
 
     yield
 
@@ -188,6 +191,18 @@ async def _handle_tool(name: str, arguments: dict[str, Any], request: Request) -
         result = await state.evaluator.evaluate(envelope)
         if result.decision == Decision.DENY and result.receipt.rejection_reason_code:
             telemetry.record_deny_reason(result.receipt.rejection_reason_code.value)
+
+        # The evaluation itself is a bounded obligation: InterroGate accepted
+        # responsibility for deciding admissibility and completed it with an
+        # ALLOW or DENY in the receipt body. A DENY is a successful completion,
+        # not a failure -- and without this it would leave no trace at all,
+        # since a refused request spawns no downstream obligation.
+        #
+        # interrogate.check is a dry-run: the caller has said in advance that
+        # nothing will be gated on the answer, so receipting it would fill the
+        # ledger with decisions that governed nothing.
+        if name != "interrogate.check" and state.receipt_emitter is not None:
+            await state.receipt_emitter.emit(envelope, result.receipt)
 
         forwarded = False
         forward_results: list[dict[str, Any]] = []
