@@ -19,3 +19,4 @@ htmlcov/
 .env.local
 .env.*.local
 
+uv.lock
