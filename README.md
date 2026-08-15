@@ -24,19 +24,73 @@ pip install -e ".[dev]"
 
 ## Configuration
 
-Environment variables (prefix `INTERROGATE_`):
+Environment variables (prefix `INTERROGATE_`). Generated from the `Settings`
+class; MetaGate bootstrap variables are documented in their own section below.
+
+`INTERROGATE_API_KEY` is **required** unless `INTERROGATE_ALLOW_INSECURE_DEV=true`; startup fails without it.
+
+See `.env.example` for a working starting point.
+
+`INTERROGATE_METAGATE_URL` and `INTERROGATE_METAGATE_ENDPOINT` both point at
+MetaGate but feed different subsystems, and setting only one gives partial
+behaviour: `..._URL` is what the policy resolver reads when fetching a policy
+profile, while `..._ENDPOINT` is what the shared bootstrap client reads at
+startup. Set both unless you intend only one of the two.
+
+### Server
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `HOST` | 0.0.0.0 | Server bind address |
-| `PORT` | 8000 | Server port |
-| `DEBUG` | false | Enable debug mode |
-| `INSTANCE_ID` | interrogate-1 | Instance identifier |
-| `METAGATE_URL` | - | MetaGate URL for policy retrieval |
-| `MEMORYGATE_URL` | - | MemoryGate URL for lineage queries |
-| `POLICY_CACHE_TTL_SECONDS` | 300 | Policy cache TTL |
-| `FORWARD_TIMEOUT_SECONDS` | 30.0 | Forwarding timeout |
-| `DEFAULT_MAX_SPAWN_DEPTH` | 10 | Default max spawn depth |
+| `INTERROGATE_DEBUG` | `false` | Enable debug mode |
+| `INTERROGATE_HOST` | `0.0.0.0` | Server bind address |
+| `INTERROGATE_INSTANCE_ID` | `interrogate-1` | Instance identifier |
+| `INTERROGATE_PORT` | `8000` | Server port |
+
+### Authentication
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `INTERROGATE_ALLOW_INSECURE_DEV` | `false` | Allow unauthenticated access (dev only) |
+| `INTERROGATE_API_KEY` | *(empty)* | API key for authentication |
+
+### Upstream services
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `INTERROGATE_MEMORYGATE_URL` | *(unset)* | Deprecated: legacy MemoryGate URL (use receiptgate_url) |
+| `INTERROGATE_RECEIPTGATE_API_KEY` | *(unset)* | ReceiptGate API key |
+| `INTERROGATE_METAGATE_URL` | *(unset)* | MetaGate MCP endpoint used by the **policy resolver** when fetching a policy profile. Separate from `INTERROGATE_METAGATE_ENDPOINT`, which the bootstrap client reads |
+| `INTERROGATE_RECEIPTGATE_URL` | *(unset)* | ReceiptGate MCP endpoint |
+
+### Rate limiting
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `INTERROGATE_RATE_LIMIT_ENABLED` | `true` | Enable rate limiting |
+| `INTERROGATE_RATE_LIMIT_REQUESTS_PER_MINUTE` | `1000` | Rate limit per minute |
+
+### CORS
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `INTERROGATE_CORS_ALLOW_CREDENTIALS` | `true` | Allow credentials in CORS requests |
+| `INTERROGATE_CORS_ALLOWED_HEADERS` | `['Authorization', 'Content-Type', 'X-Tenant-ID']` | Allowed request headers |
+| `INTERROGATE_CORS_ALLOWED_METHODS` | `['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']` | Allowed HTTP methods |
+| `INTERROGATE_CORS_ALLOWED_ORIGINS` | `['http://localhost:3000', 'http://localhost:8080']` | Allowed CORS origins |
+
+### Behaviour and limits
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `INTERROGATE_DEFAULT_MAX_REPEATS_PER_CAPABILITY` | `5` | Default max repeats per capability |
+| `INTERROGATE_DEFAULT_MAX_SPAWN_DEPTH` | `10` | Default max spawn depth |
+| `INTERROGATE_FORWARD_ALLOWED_HOSTS` | `['localhost', '127.0.0.1']` | Allowed forward target hosts (use '*' to allow any) |
+| `INTERROGATE_FORWARD_ALLOWED_SCHEMES` | `['http', 'https']` | Allowed schemes for forward targets |
+| `INTERROGATE_FORWARD_PASS_HEADERS` | `['X-Tenant-ID', 'X-Request-ID']` | Headers allowed to pass through to forward targets |
+| `INTERROGATE_FORWARD_RETRIES` | `2` | Forward retry attempts |
+| `INTERROGATE_FORWARD_TIMEOUT_SECONDS` | `30.0` | Forward request timeout |
+| `INTERROGATE_POLICY_CACHE_MAX_SIZE` | `100` | Maximum policy cache size |
+| `INTERROGATE_POLICY_CACHE_TTL_SECONDS` | `300` | Policy cache TTL in seconds |
 
 ## MCP Interface
 
