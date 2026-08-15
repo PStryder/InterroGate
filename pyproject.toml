@@ -15,6 +15,9 @@ dependencies = [
     "pydantic-settings>=2.1.0",
     "httpx>=0.26.0",
     "ulid-py>=1.1.0",
+    # Canonical receipt protocol. Hard dependency: this gate must not be able
+    # to start without the validator.
+    "legivellum",
 ]
 
 [project.optional-dependencies]
@@ -56,3 +59,7 @@ pretty = true
 [tool.pytest.ini_options]
 addopts = "-q --maxfail=1 --cov=interrogate --cov-report=term-missing --cov-fail-under=40"
 testpaths = ["tests"]
+
+# legivellum is the sibling protocol package, not published to an index.
+[tool.uv.sources]
+legivellum = { path = "../LegiVellum", editable = true }

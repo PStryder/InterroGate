@@ -46,6 +46,8 @@ from uuid import uuid4
 
 import httpx
 
+from legivellum.ulid import new_ulid
+
 from .models import AdmissionReceipt, Decision, RequestEnvelope
 
 logger = logging.getLogger(__name__)
@@ -67,6 +69,7 @@ def _base_receipt(
     *,
     receipt_id: str,
     task_id: str,
+    obligation_id: str,
     tenant_id: str,
     recipient_ai: str,
     envelope: RequestEnvelope,
@@ -85,6 +88,11 @@ def _base_receipt(
         "tenant_id": tenant_id,
         "receipt_id": receipt_id,
         "task_id": task_id,
+        # Both receipts of the pair name the same obligation: the accepted one
+        # opens it, the complete one closes it. Only a receipt naming this
+        # obligation_id may close it, so an unrelated completion sharing the
+        # task lineage cannot discharge an admission evaluation.
+        "obligation_id": obligation_id,
         # The admission obligation is a sibling of the work it gates, not its
         # parent: InterroGate does not own the admitted work.
         "parent_task_id": (causality.parent_task_id if causality and causality.parent_task_id else "NA"),
@@ -152,6 +160,9 @@ def build_admission_receipts(
     Returned rather than emitted so the shape can be tested without a ledger.
     """
     task_id = f"admission-{uuid4()}"
+    # One obligation -- "determine whether request X is admissible" -- carried
+    # by both receipts of the pair.
+    obligation_id = new_ulid()
     accepted_id = str(uuid4())
     complete_id = str(uuid4())
     tenant_id = envelope.tenant_id or "default"
@@ -170,6 +181,7 @@ def build_admission_receipts(
     accepted = _base_receipt(
         receipt_id=accepted_id,
         task_id=task_id,
+        obligation_id=obligation_id,
         tenant_id=tenant_id,
         recipient_ai=recipient_ai,
         envelope=envelope,
@@ -204,6 +216,7 @@ def build_admission_receipts(
     complete = _base_receipt(
         receipt_id=complete_id,
         task_id=task_id,
+        obligation_id=obligation_id,
         tenant_id=tenant_id,
         recipient_ai=recipient_ai,
         envelope=envelope,
