@@ -45,7 +45,6 @@ from typing import Any, Optional
 from uuid import uuid4
 
 import httpx
-
 from legivellum.ulid import new_ulid
 
 from .models import AdmissionReceipt, Decision, RequestEnvelope
